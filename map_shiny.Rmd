@@ -1,0 +1,145 @@
+---
+title: ""
+output: 
+  html_document
+runtime: shiny
+---
+
+```{r, echo=F, eval=FALSE}
+#### Percentage of facilities experiencing a recent empty stock of each method, relative to the number of facilities in each region / province that normally provide the method (all survey years combined)* 
+# <br>
+```
+
+```{r setup, include=FALSE}
+library(shiny)
+library(tidyverse)
+library(sf)
+library(tmap)
+library(leaflet)
+library(haven)
+dat <- read_rds("sdp_stockouts.rds")
+et_map <- read_rds("et_map.rds")
+ke_map <- read_rds("ke_map.rds")
+ug_map <- read_rds("ug_map.rds")
+st_crs(et_map) = 32637
+st_crs(ke_map) = 4326
+st_crs(ug_map) = 32636
+
+```
+
+
+```{r echo = F, message=F}
+methods <- c(
+  "MALE CONDOMS" = "CONOUT3MO",
+  "FEMALE CONDOMS" = "FCOUT3MO",
+  "CYCLE BEADS" = "CYCBOUT3MO",
+  "DIAPHRAGM" = "DIAOUT3MO",
+  "EMERGENCY METHOD" = "EMRGOUT3MO",
+  "FOAM / JELLY" = "FJOUT3MO",      
+  "IMPLANTS" = "IMPOUT3MO",     
+  "INJECTABLE" = "INJOUT3MO",    
+  "IUD" = "IUDOUT3MO",     
+  "PILL" = "PILLOUT3MO",    
+  "DEPO PROVERA" = "DEPOOUT3MO",    
+  "SAYANA PRESS" = "SAYOUT3MO",  
+  "PROGESTIN PILLS" = "PROPILLOUT3MO",
+  "OTHER" = "OTHEROUT3MO"
+)
+
+countries <- c(
+  "UGANDA",
+  "KENYA",
+  "ETHIOPIA"
+)
+
+shinyApp(
+  fluidPage(
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("country", "Choose a country", choices = countries),
+        selectInput("method", "Choose a method", choices = methods),
+        helpText(
+          "Click on any region / province for more information" %>% 
+          em() %>% 
+          strong()
+        ),
+        shiny::helpText(
+          "Drag and scroll to resize" %>% 
+          em() %>% 
+          strong()
+        )
+      ), 
+      mainPanel(
+        tmapOutput("map")
+      )
+    )
+  ),
+  function(input, output, session){
+    output$map <- renderTmap({
+      if(input$country == "UGANDA"){
+        map <- ug_map
+        groups <- "GEOUGGEN"
+      } else if(input$country == "KENYA"){
+        map <- ke_map
+        groups <- "GEOKE"
+      } else if(input$country == "ETHIOPIA"){
+        map <- et_map
+        groups <- "GEOET"
+      }
+      method <- input$method
+      
+      data <- dat %>%
+        filter(!!sym(method) %in% c(0, 1, 97)) %>%
+        group_by(!!sym(groups)) %>%
+        count(TEST = !!sym(method) == 0, name = "N") %>%
+        mutate(PCT = 100*N/sum(N)) %>%
+        pivot_wider(
+          id_cols = !!sym(groups),
+          names_from = TEST,
+          values_from = c(N, PCT)
+        ) %>%
+        mutate(TOT = N_TRUE + N_FALSE) %>%
+        ungroup() %>%
+        rename(
+          name = !!sym(groups),
+          "Pct. SDPs" = PCT_FALSE
+        )  %>% 
+        filter(!is.na(name)) %>%
+        mutate(full_name = as_factor(name) %>% as.character) %>% 
+        left_join(map, ., by = "name") %>%
+        mutate(    
+          id = as_factor(full_name) %>% as.character,
+          name = id,
+          OBJECTID = id
+        ) 
+      
+        tm_shape(data) +
+        tm_basemap(NULL) +
+        tm_polygons(
+          "Pct. SDPs", 
+          alpha = 0.9,
+          border.alpha = 0.3, 
+          palette = c(
+            "#F0E6F0", # PMA grey
+            "#98579B", # PMA pink
+            "#13374C" # PMA blue
+          ),
+          breaks = c(0,5,10,15,20,25,30,35,Inf),
+          popup.vars = c(
+            "SDPs that normally supply (all yrs)" = "TOT",
+            "SDPs with recent stockout (3 mo)" = "N_FALSE",
+            "Pct. of suppliers with recent stockout (3 mo)" = "Pct. SDPs"
+          )
+        )
+    })
+  }
+)
+
+```
+
+```{r, echo=F, eval=F}
+# <br><br>
+# *A recent stockout includes any empty stock experienced within 3 months prior to the survey.
+# 
+# Missing regions / provinces include those with no surveyed facilities and those where no surveyed facilities normally provide the method.
+```
