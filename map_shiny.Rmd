@@ -12,19 +12,19 @@ runtime: shiny
 
 ```{r setup, include=FALSE}
 library(shiny)
-library(tidyverse)
+library(dplyr)
+library(tidyr)
+library(haven)
 library(sf)
 library(tmap)
-library(leaflet)
-library(haven)
-dat <- read_rds("sdp_stockouts.rds")
-et_map <- read_rds("et_map.rds")
-ke_map <- read_rds("ke_map.rds")
-ug_map <- read_rds("ug_map.rds")
+
+dat <- readRDS("sdp_stockouts.rds")
+et_map <- readRDS("et_map.rds")
+ke_map <- readRDS("ke_map.rds")
+ug_map <- readRDS("ug_map.rds")
 st_crs(et_map) = 32637
 st_crs(ke_map) = 4326
 st_crs(ug_map) = 32636
-
 ```
 
 
@@ -75,7 +75,7 @@ shinyApp(
     )
   ),
   function(input, output, session){
-    output$map <- renderTmap({
+    output$map <- tmap::renderTmap({
       if(input$country == "UGANDA"){
         map <- ug_map
         groups <- "GEOUGGEN"
